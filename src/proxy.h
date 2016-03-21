@@ -4,8 +4,9 @@
 #include <time.h>
 #include <syslog.h>
 
-#include "vrt.h"
 #include "vcl.h"
+#include "vrt.h"
+#include "vdef.h"
 #include "vsb.h"
 #include "cache/cache.h"
 

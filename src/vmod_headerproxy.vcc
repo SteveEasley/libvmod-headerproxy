@@ -1,5 +1,5 @@
 $Module headerproxy 3 VMOD
-$Init init_function
+$Event init_function
 $Function VOID url(PRIV_VCL, STRING)
 $Function VOID host(PRIV_VCL, STRING)
 $Function VOID connect_timeout(PRIV_VCL, INT)

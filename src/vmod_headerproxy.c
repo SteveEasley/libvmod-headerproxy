@@ -6,8 +6,12 @@
 #include "vcc_if.h"
 
 int
-init_function(struct vmod_priv *priv, const struct VCL_conf *conf)
+init_function(const struct vrt_ctx *ctx, struct vmod_priv *priv,
+              enum vcl_event_e e)
 {
+    if (e != VCL_EVENT_LOAD)
+      return 0;
+
     struct proxy_config *cfg = proxy_init();
     CHECK_OBJ_NOTNULL(cfg, PROXY_CONFIG_MAGIC);
 

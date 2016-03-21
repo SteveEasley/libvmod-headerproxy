@@ -15,6 +15,9 @@ set_header_id(const struct vrt_ctx *ctx, const struct proxy_request *req);
 static unsigned
 get_header_id(const struct vrt_ctx *ctx);
 
+static int
+is_header(const txt *hh, const char *hdr);
+
 static void
 gc_request_pool();
 
@@ -267,7 +270,7 @@ proxy_release_request(const struct vrt_ctx *ctx, struct proxy_request *req)
         case VCL_MET_DELIVER:
             /* If cached obj has expired we have to assume a background fetch
              * was or will be spawned, in which case we don't release */
-            if (EXP_Ttl(ctx->req, ctx->req->obj) < ctx->req->t_req) {
+            if (EXP_Ttl(ctx->req, &ctx->req->objcore->exp) < ctx->req->t_req) {
                 PROXY_DEBUG(ctx, "(%x) blocked release (bgfetch)", req->id);
                 return;
             }
@@ -397,14 +400,14 @@ proxy_curl(const struct vrt_ctx *ctx, struct proxy_request *req)
             headers = curl_slist_append(headers, wshdr);
         }
         else if (u >= HTTP_HDR_FIRST) {
-            if (http_IsHdr(&hdr, H_Host)) {
+            if (is_header(&hdr, H_Host)) {
                 wshdr = WS_Printf(ctx->ws, "X-Forwarded-Host: %s", (hdr.b + H_Host[0] + 1));
                 headers = curl_slist_append(headers, wshdr);
             }
-            else if (http_IsHdr(&hdr, H_Via) || http_IsHdr(&hdr, H_Content_Length)) {
+            else if (is_header(&hdr, H_Via) || is_header(&hdr, H_Content_Length)) {
                 continue;
             }
-            else if (http_IsHdr(&hdr, H_Accept_Encoding)) {
+            else if (is_header(&hdr, H_Accept_Encoding)) {
                 //curl_easy_setopt(ch, CURLOPT_ENCODING, "gzip");
                 headers = curl_slist_append(headers, "Accept-Encoding: identity");
             }
@@ -691,6 +694,20 @@ get_header_id(const struct vrt_ctx *ctx)
         return 0;
 
     return id;
+}
+
+static int
+is_header(const txt *hh, const char *hdr)
+{
+    unsigned l;
+
+  	Tcheck(*hh);
+  	AN(hdr);
+  	l = hdr[0];
+  	assert(l == strlen(hdr + 1));
+  	assert(hdr[l] == ':');
+  	hdr++;
+  	return (!strncasecmp(hdr, hh->b, l));
 }
 
 static void
