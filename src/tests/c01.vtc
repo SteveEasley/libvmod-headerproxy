@@ -1,0 +1,144 @@
+varnishtest "Test bad json response"
+
+server s1 {
+    # emptyString
+    rxreq
+    txresp -hdr "Content-Type: application/json" -body {}
+
+    # emptyArray
+    accept
+    rxreq
+    txresp -hdr "Content-Type: application/json" -body {[]}
+
+    # emptyObject
+    accept
+    rxreq
+    txresp -hdr "Content-Type: application/json" -body {{}}
+
+    # unknownMethod
+    accept
+    rxreq
+    txresp -hdr "Content-Type: application/json" -body {
+        {
+            "vcl_recv": [
+                "recv-a: a"
+            ],
+            "foo": [
+                "foo: bar"
+            ]
+        }
+    }
+
+    # headerIsObject
+    accept
+    rxreq
+    txresp -hdr "Content-Type: application/json" -body {
+        {
+            "vcl_recv": {
+                "0": "recv-a: a",
+                "recv-b: ": "b"
+            }
+        }
+    }
+
+    # headerIsEmptyString
+    accept
+    rxreq
+    txresp -hdr "Content-Type: application/json" -body {
+        {
+            "vcl_recv": [
+                ""
+            ]
+        }
+    }
+} -start
+
+server s2 {
+    # emptyString
+    rxreq
+    expect req.http.x-error ~ "parse: no body"
+    txresp
+
+    # emptyArray
+    rxreq
+    expect req.http.x-error == ""
+    txresp
+
+    # emptyObject
+    rxreq
+    expect req.http.x-error == ""
+    txresp
+
+    # unknownMethod
+    rxreq
+    expect req.http.x-error == ""
+    expect req.http.recv-a == "a"
+    txresp
+
+    # headerIsObject
+    rxreq
+    expect req.http.recv-a == <undef>
+    expect req.http.x-error ~ "json error: lvl 1 not array"
+    txresp
+
+    # headerIsEmptyString
+    rxreq
+    expect req.http.x-error == ""
+    txresp
+} -start
+
+varnish v1 -vcl+backend {
+    import headerproxy from "${vmod_topbuild}/src/.libs/libvmod_headerproxy.so";
+
+    sub vcl_recv {
+        set req.backend_hint = s1;
+        set req.backend_hint = s2;
+
+        headerproxy.url("http://${s1_addr}:${s1_port}");
+
+        headerproxy.call();
+        set req.http.x-error = headerproxy.error();
+
+        return (pass);
+    }
+
+    sub vcl_deliver {
+        headerproxy.process();
+    }
+} -start
+
+client c1 {
+    txreq -url "/" -hdr "x-case: emptyString"
+    rxresp
+    expect resp.status == 200
+} -run
+
+client c1 {
+    txreq -url "/" -hdr "x-case: emptyArray"
+    rxresp
+    expect resp.status == 200
+} -run
+
+client c1 {
+    txreq -url "/" -hdr "x-case: emptyObject"
+    rxresp
+    expect resp.status == 200
+} -run
+
+client c1 {
+    txreq -url "/" -hdr "x-case: unknownMethod"
+    rxresp
+    expect resp.status == 200
+} -run
+
+client c1 {
+    txreq -url "/" -hdr "x-case: headerIsObject"
+    rxresp
+    expect resp.status == 200
+} -run
+
+client c1 {
+    txreq -url "/" -hdr "x-case: headerIsEmptyString"
+    rxresp
+    expect resp.status == 200
+} -run

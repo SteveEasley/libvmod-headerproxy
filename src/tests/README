@@ -1,0 +1,10 @@
+Functional Tests
+================
+
+Naming scheme
+-------------
+
+    a -> Basic tests
+    b -> Config tests
+    c -> Error tests
+    d -> Exit tests

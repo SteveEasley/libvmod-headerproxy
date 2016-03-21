@@ -1,0 +1,55 @@
+varnishtest "Test vcl_synth"
+
+# Test that synth requests go though vcl_synth
+
+server s1 {
+    rxreq
+    txresp -hdr "Content-Type: application/json" -body {
+        {
+            "vcl_recv": [
+                "x-recv: recv"
+            ]
+        }
+    }
+} -start
+
+server s2 {
+
+} -start
+
+varnish v1 -vcl+backend {
+    import headerproxy from "${vmod_topbuild}/src/.libs/libvmod_headerproxy.so";
+
+    sub vcl_init {
+        headerproxy.url("http://localhost:8000/test.php?h=recv");
+        headerproxy.url("http://${s1_addr}:${s1_port}");
+    }
+
+    sub vcl_recv {
+        set req.backend_hint = s1;
+        set req.backend_hint = s2;
+
+        headerproxy.call();
+        set req.http.error = headerproxy.error();
+
+        return (synth(200, req.http.x-recv));
+    }
+
+    sub vcl_synth {
+        headerproxy.process();
+        set resp.http.x-recv = req.http.x-recv;
+        set resp.http.x-error = req.http.x-error;
+        return (deliver);
+    }
+
+} -start
+
+client c1 {
+    txreq -url "/"
+    rxresp
+
+    expect resp.http.x-recv == "recv"
+    expect resp.http.x-error == ""
+} -run
+
+varnish v1 -expect s_synth == 1

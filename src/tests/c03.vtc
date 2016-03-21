@@ -1,0 +1,38 @@
+varnishtest "Test invalid http response code"
+
+server s1 {
+    rxreq
+    txresp -status 500 -hdr "Content-Type: application/json" -body {}
+} -start
+
+server s2 {
+    rxreq
+    expect req.http.x-error ~ "curl err: 500 response"
+    txresp
+} -start
+
+varnish v1 -vcl+backend {
+    import headerproxy from "${vmod_topbuild}/src/.libs/libvmod_headerproxy.so";
+
+    sub vcl_init {
+        headerproxy.url("http://${s1_addr}:${s1_port}");
+    }
+
+    sub vcl_recv {
+        set req.backend_hint = s1;
+        set req.backend_hint = s2;
+
+        headerproxy.call();
+        set req.http.x-error = headerproxy.error();
+        return (hash);
+    }
+
+    sub vcl_deliver {
+        headerproxy.process();
+    }
+} -start
+
+client c1 {
+    txreq -url "/"
+    rxresp
+} -run

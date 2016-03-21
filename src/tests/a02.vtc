@@ -1,0 +1,123 @@
+varnishtest "Test realworld"
+
+server s1 {
+    rxreq
+    txresp -hdr "Content-Type: application/json" -body {
+        {
+            "vcl_recv": [
+                "X-Geo: us",
+                "X-Device: pc"
+            ],
+            "vcl_backend_response": [
+                "Vary: X-Geo, X-Device"
+            ],
+            "vcl_deliver": [
+                "Set-Cookie: cn=us",
+                "Set-Cookie: ua=pc"
+            ]
+        }
+    }
+
+    accept
+    rxreq
+    txresp -hdr "Content-Type: application/json" -body {
+        {
+            "vcl_recv": [
+                "X-Geo: us",
+                "X-Device: pc"
+            ],
+            "vcl_backend_response": [
+                "Vary: X-Geo, X-Device"
+            ],
+            "vcl_deliver": [
+                "Set-Cookie: cn=us",
+                "Set-Cookie: ua=pc"
+            ]
+        }
+    }
+
+    accept
+    rxreq
+    txresp -hdr "Content-Type: application/json" -body {
+        {
+            "vcl_recv": [
+                "X-Geo: uk",
+                "X-Device: mobile"
+            ],
+            "vcl_backend_response": [
+                "Vary: X-Geo, X-Device"
+            ],
+            "vcl_deliver": [
+                "Set-Cookie: cn=uk",
+                "Set-Cookie: ua=mobile"
+            ]
+        }
+    }
+} -start
+
+server s2 {
+    # client c1
+    rxreq
+    expect req.http.X-Geo == "us"
+    expect req.http.X-Device == "pc"
+    expect req.http.x-error == ""
+    txresp -hdr "X-Theme: charm" -hdr "Vary: X-Theme"
+
+    # client c2
+    # cached so shouldn't make it to backend
+
+    # client c3
+    rxreq
+    expect req.http.X-Geo == "uk"
+    expect req.http.X-Device == "mobile"
+    expect req.http.x-error == ""
+    txresp -hdr "X-Theme: charm" -hdr "Vary: X-Theme"
+} -start
+
+varnish v1 -vcl+backend {
+    import ${vmod_std};
+    import headerproxy from "${vmod_topbuild}/src/.libs/libvmod_headerproxy.so";
+
+    sub vcl_init {
+        headerproxy.url("http://${s1_addr}:${s1_port}");
+    }
+
+    sub vcl_recv {
+        set req.backend_hint = s1;
+        set req.backend_hint = s2;
+
+        headerproxy.call();
+        set req.http.x-error = headerproxy.error();
+    }
+    
+    sub vcl_backend_response {
+        headerproxy.process();
+        std.collect(beresp.http.Vary);
+    }
+
+    sub vcl_deliver {
+        headerproxy.process();
+        std.collect(resp.http.Set-Cookie);
+    }
+} -start
+
+client c1 {
+    txreq -url "/" -hdr "cn: us" -hdr "ua: pc"
+    rxresp
+    expect resp.http.Vary == "X-Theme, X-Geo, X-Device"
+    expect resp.http.Set-Cookie == "cn=us, ua=pc"
+} -run
+
+client c1 {
+    txreq -url "/" -hdr "cn: us" -hdr "ua: pc"
+    rxresp
+    expect resp.http.Vary == "X-Theme, X-Geo, X-Device"
+    expect resp.http.Set-Cookie == "cn=us, ua=pc"
+} -run
+
+client c1 {
+    txreq -url "/" -hdr "cn: uk" -hdr "ua: mobile"
+    rxresp
+    expect resp.http.Vary == "X-Theme, X-Geo, X-Device"
+    expect resp.http.Set-Cookie == "cn=uk, ua=mobile"
+} -run

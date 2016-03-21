@@ -1,0 +1,53 @@
+varnishtest "Test error called before process"
+
+server s1 {
+    rxreq
+    txresp -hdr "Content-Type: application/json" -body {
+        {
+            "vcl_recv": [
+                "x-recv: recv"
+            ],
+            "vcl_deliver": [
+                "x-deliv: deliv"
+            ]
+        }
+    }
+} -start
+
+server s2 {
+    rxreq
+    expect req.http.x-error == ""
+    expect req.http.x-recv == "recv"
+    txresp
+} -start
+
+varnish v1 -vcl+backend {
+    import headerproxy from "${vmod_topbuild}/src/.libs/libvmod_headerproxy.so";
+
+    sub vcl_init {
+        headerproxy.url("http://${s1_addr}:${s1_port}");
+    }
+
+    sub vcl_recv {
+        set req.backend_hint = s1;
+        set req.backend_hint = s2;
+
+        set req.http.x-error = headerproxy.error();
+        headerproxy.call();
+
+        return (hash);
+    }
+
+    sub vcl_deliver {
+        headerproxy.process();
+    }
+} -start
+
+client c1 {
+    txreq -url "/"
+    rxresp
+    expect resp.http.x-deliv == "deliv"
+} -run
+
+varnish v1 -expect n_object == 1
+varnish v1 -expect cache_miss == 1

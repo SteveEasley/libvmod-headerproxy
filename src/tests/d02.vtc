@@ -1,0 +1,50 @@
+varnishtest "Test vcl_pipe"
+
+# Test that piped requests go through vcl_pipe
+
+server s1 {
+    rxreq
+    txresp -hdr "Content-Type: application/json" -body {
+        {
+            "vcl_recv": [
+                "x-recv: recv"
+            ]
+        }
+    }
+} -start
+
+server s2 {
+    rxreq
+    expect req.http.x-recv == "recv"
+    expect req.http.x-error == ""
+    txresp
+} -start
+
+varnish v1 -vcl+backend {
+    import headerproxy from "${vmod_topbuild}/src/.libs/libvmod_headerproxy.so";
+
+    sub vcl_init {
+        headerproxy.url("http://${s1_addr}:${s1_port}");
+    }
+
+    sub vcl_recv {
+        set req.backend_hint = s1;
+        set req.backend_hint = s2;
+
+        headerproxy.call();
+        set req.http.x-error = headerproxy.error();
+
+        return (pipe);
+    }
+
+    sub vcl_pipe {
+        headerproxy.process();
+        return (pipe);
+    }
+
+} -start
+
+client c1 {
+    txreq -url "/"
+    rxresp
+} -run
