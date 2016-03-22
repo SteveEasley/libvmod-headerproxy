@@ -19,7 +19,8 @@ Varnish Header Proxy VMOD
 %setup -n libvmod-headerproxy-%{version}
 
 %build
-%configure --prefix=/usr --libdir=/usr/lib64
+%configure \
+#    --enable-debug
 %{__make} %{?_smp_mflags}
 %{__make} %{?_smp_mflags} check
 
