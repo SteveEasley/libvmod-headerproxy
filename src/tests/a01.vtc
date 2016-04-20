@@ -28,15 +28,12 @@ server s2 {
     txresp
 } -start
 
+
 varnish v1 -vcl+backend {
     import headerproxy from "${vmod_topbuild}/src/.libs/libvmod_headerproxy.so";
 
-    sub vcl_init {
-        headerproxy.url("http://${s1_addr}:${s1_port}/0");
-    }
-
     sub vcl_recv {
-        set req.backend_hint = s1;
+        headerproxy.backend(s1);
         set req.backend_hint = s2;
 
         headerproxy.call();

@@ -1,30 +1,24 @@
-varnishtest "Test proxy headers"
+varnishtest "Test path param"
 
-# Test proxy sends correct headers
 server s1 {
     rxreq
-    expect req.method == "GET"
-    expect req.http.Via == {HTTP/1.1 VMOD-HeaderProxy}
-    expect req.http.X-Forwarded-Method == "POST"
-    expect req.http.X-Forwarded-Url == {/foo}
-    expect req.http.X-Forwarded-Host == "foo.com"
+    expect req.url == "/test"
     txresp -hdr "Content-Type: application/json" -body "{}"
 } -start
 
 server s2 {
     rxreq
-    expect req.method == "POST"
-    expect req.http.Host == "foo.com"
-    expect req.http.Via == "foo"
-    expect req.http.x-error == ""
     txresp
 } -start
 
+
 varnish v1 -vcl+backend {
+    import ${vmod_directors};
     import headerproxy from "${vmod_topbuild}/src/.libs/libvmod_headerproxy.so";
 
     sub vcl_recv {
         headerproxy.backend(s1);
+        headerproxy.path("/test");
         set req.backend_hint = s2;
 
         headerproxy.call();
@@ -34,9 +28,10 @@ varnish v1 -vcl+backend {
     sub vcl_deliver {
         headerproxy.process();
     }
+
 } -start
 
 client c1 {
-    txreq -url "/foo" -req POST -hdr "Host: foo.com" -hdr "Via: foo"
+    txreq -url "/"
     rxresp
 } -run

@@ -10,10 +10,13 @@
 #include "proxy.h"
 
 static void
-set_header_id(const struct vrt_ctx *ctx, const struct proxy_request *req);
+set_header_id(VRT_CTX, const struct proxy_request *req);
 
 static unsigned
-get_header_id(const struct vrt_ctx *ctx);
+get_header_id(VRT_CTX);
+
+static int
+is_header(const txt *hh, const char *hdr);
 
 static void
 gc_request_pool();
@@ -25,68 +28,30 @@ static short
 process_json(struct proxy_request *req, unsigned short *idx,
              unsigned *type, unsigned short lvl);
 
+static const struct backend *
+get_backend(VRT_CTX, struct worker *wrk, const struct director *dir);
+
 static VTAILQ_HEAD(,proxy_request) req_pool = VTAILQ_HEAD_INITIALIZER(req_pool);
 static pthread_mutex_t mtx = PTHREAD_MUTEX_INITIALIZER;
 
 static short initialize = 1;
 static short gc_running = 0;
 
-struct proxy_config *
+void
 proxy_init()
 {
-    struct proxy_config *cfg;
-
-    int connect_timeout = PROXY_CONNECT_TIMEOUT;
-    int timeout = PROXY_TIMEOUT;
-
-    ALLOC_OBJ(cfg, PROXY_CONFIG_MAGIC);
-    AN(cfg);
-
-    cfg->url = NULL;
-    cfg->host = NULL;
-
-    cfg->connect_timeout = (long *)malloc(sizeof(connect_timeout));
-    AN(cfg->connect_timeout);
-    memcpy(cfg->connect_timeout, &connect_timeout, sizeof(connect_timeout));
-
-    cfg->timeout = (long *)malloc(sizeof(timeout));
-    AN(cfg->timeout);
-    memcpy(cfg->timeout, &timeout, sizeof(timeout));
-
     if (initialize)
         curl_global_init(CURL_GLOBAL_ALL);
+
     initialize = 0;
-
-    return cfg;
-}
-
-void
-proxy_free_config(void *p)
-{
-    struct proxy_config *cfg;
-    CAST_OBJ(cfg, p, PROXY_CONFIG_MAGIC);
-
-    if (cfg) {
-        if (cfg->url)
-            free(cfg->url);
-
-        if (cfg->host)
-            free(cfg->host);
-
-        free(cfg->connect_timeout);
-        free(cfg->timeout);
-
-        free(cfg);
-    }
 }
 
 struct proxy_request *
-proxy_get_request(const struct vrt_ctx *ctx, const struct proxy_config *cfg)
+proxy_get_request(VRT_CTX, int alloc)
 {
     struct proxy_request *req = NULL, *preq = NULL;
 
     CHECK_OBJ_NOTNULL(ctx, VRT_CTX_MAGIC);
-    CHECK_OBJ_ORNULL(cfg, PROXY_CONFIG_MAGIC);
 
     AN(ctx->req->vsl->wid);
     assert(ctx->method == VCL_MET_RECV);
@@ -120,10 +85,10 @@ proxy_get_request(const struct vrt_ctx *ctx, const struct proxy_config *cfg)
     if (req)
         return req;
 
-    /* No cfg means caller was only looking for allocated requests, and doesn't
+    /* No alloc means caller was only looking for allocated requests, and doesn't
      * want to allocate one if it didnt exist. For example headerproxy.error()
      * calls. */
-    if (cfg == NULL)
+    if (!alloc)
         return NULL;
 
     PROXY_DEBUG(ctx, "pool size: %i", pcount);
@@ -169,14 +134,13 @@ proxy_get_request(const struct vrt_ctx *ctx, const struct proxy_config *cfg)
     else
         PROXY_DEBUG(ctx, "(%x) reused", req->id);
 
+    req->backend = NULL;
+    req->path = NULL;
     req->busy = 1;
     req->ts = ts;
     req->methods = 0;
 
     set_header_id(ctx, req);
-
-    /* Copy default global config */
-    memcpy(&req->cfg, cfg, sizeof(*cfg));
 
     return req;
 }
@@ -185,7 +149,7 @@ proxy_get_request(const struct vrt_ctx *ctx, const struct proxy_config *cfg)
  * Resumes a vmod request already associated in proxy_get_request()
  */
 struct proxy_request *
-proxy_resume_request(const struct vrt_ctx *ctx)
+proxy_resume_request(VRT_CTX)
 {
     struct proxy_request *req = NULL, *preq = NULL;
 
@@ -248,7 +212,7 @@ proxy_resume_request(const struct vrt_ctx *ctx)
 }
 
 void
-proxy_release_request(const struct vrt_ctx *ctx, struct proxy_request *req)
+proxy_release_request(VRT_CTX, struct proxy_request *req)
 {
     CHECK_OBJ_NOTNULL(req, PROXY_REQUEST_MAGIC);
     CHECK_OBJ_NOTNULL(req->body, VSB_MAGIC);
@@ -267,7 +231,7 @@ proxy_release_request(const struct vrt_ctx *ctx, struct proxy_request *req)
         case VCL_MET_DELIVER:
             /* If cached obj has expired we have to assume a background fetch
              * was or will be spawned, in which case we don't release */
-            if (EXP_Ttl(ctx->req, ctx->req->obj) < ctx->req->t_req) {
+            if (EXP_Ttl(ctx->req, &ctx->req->objcore->exp) < ctx->req->t_req) {
                 PROXY_DEBUG(ctx, "(%x) blocked release (bgfetch)", req->id);
                 return;
             }
@@ -283,6 +247,8 @@ proxy_release_request(const struct vrt_ctx *ctx, struct proxy_request *req)
     req->methods = 0;
     req->json_toks_len = 0;
     req->error = NULL;
+    req->backend = NULL;
+    req->path = NULL;
 
     // Leave req->ts set to help gc_request_pool
     // No need to free req->error since its varnish ws managed
@@ -342,7 +308,7 @@ curl_debug(CURL *ch, curl_infotype type, char *data, size_t size, void *ud)
 #endif
 
 void
-proxy_curl(const struct vrt_ctx *ctx, struct proxy_request *req)
+proxy_curl(VRT_CTX, struct proxy_request *req)
 {
     CHECK_OBJ_NOTNULL(req, PROXY_REQUEST_MAGIC);
     AN(req->busy);
@@ -351,11 +317,27 @@ proxy_curl(const struct vrt_ctx *ctx, struct proxy_request *req)
 
     req->ctx = ctx;
 
+    const struct backend *be = get_backend(ctx, ctx->req->wrk, req->backend);
+    CHECK_OBJ_ORNULL(be, BACKEND_MAGIC);
+
+    if (be == NULL) {
+        PROXY_REQ_ERROR_VOID(req, "no backends available%s", "");
+    }
+
+    char *url = WS_Printf(ctx->ws, "http://%s%s%s",
+        be->ipv4_addr,
+        req->path && *(req->path) == '/' ? "" : "/",
+        req->path ? req->path : ""
+    );
+
+    long port = strtol(be->port, NULL, 0);
+
     CURL *ch = curl_easy_init();
     AN(ch);
 
     curl_easy_setopt(ch, CURLOPT_HTTPGET, 1L);
-    curl_easy_setopt(ch, CURLOPT_URL, req->cfg.url);
+    curl_easy_setopt(ch, CURLOPT_URL, url);
+    curl_easy_setopt(ch, CURLOPT_PORT, port);
     curl_easy_setopt(ch, CURLOPT_NOSIGNAL, 1L);
     curl_easy_setopt(ch, CURLOPT_NOPROGRESS, 1L);
     curl_easy_setopt(ch, CURLOPT_WRITEFUNCTION, curl_recv);
@@ -367,20 +349,20 @@ proxy_curl(const struct vrt_ctx *ctx, struct proxy_request *req)
     curl_easy_setopt(ch, CURLOPT_DEBUGDATA, req);
 #endif
 
-    if (*req->cfg.connect_timeout > 0)
-        curl_easy_setopt(ch, CURLOPT_CONNECTTIMEOUT, *req->cfg.connect_timeout);
+    if ((long)be->connect_timeout > 0)
+        curl_easy_setopt(ch, CURLOPT_CONNECTTIMEOUT, (long)be->connect_timeout);
 
-    if (*req->cfg.timeout > 0)
-        curl_easy_setopt(ch, CURLOPT_TIMEOUT, *req->cfg.timeout);
+    if ((long)be->first_byte_timeout > 0)
+        curl_easy_setopt(ch, CURLOPT_TIMEOUT, (long)be->first_byte_timeout);
 
     struct curl_slist *headers = NULL;
     char *wshdr = NULL;
 
-    if (req->cfg.host) {
-        wshdr = WS_Printf(ctx->ws, "Host: %s", req->cfg.host);
+    if (be->hosthdr) {
+        wshdr = WS_Printf(ctx->ws, "Host: %s", be->hosthdr);
         headers = curl_slist_append(headers, wshdr);
     }
-    
+
     for (int u = 0; u < ctx->http_req->nhd; u++) {
         const txt hdr = ctx->http_req->hd[u];
 
@@ -397,14 +379,14 @@ proxy_curl(const struct vrt_ctx *ctx, struct proxy_request *req)
             headers = curl_slist_append(headers, wshdr);
         }
         else if (u >= HTTP_HDR_FIRST) {
-            if (http_IsHdr(&hdr, H_Host)) {
+            if (is_header(&hdr, H_Host)) {
                 wshdr = WS_Printf(ctx->ws, "X-Forwarded-Host: %s", (hdr.b + H_Host[0] + 1));
                 headers = curl_slist_append(headers, wshdr);
             }
-            else if (http_IsHdr(&hdr, H_Via) || http_IsHdr(&hdr, H_Content_Length)) {
+            else if (is_header(&hdr, H_Via) || is_header(&hdr, H_Content_Length)) {
                 continue;
             }
-            else if (http_IsHdr(&hdr, H_Accept_Encoding)) {
+            else if (is_header(&hdr, H_Accept_Encoding)) {
                 //curl_easy_setopt(ch, CURLOPT_ENCODING, "gzip");
                 headers = curl_slist_append(headers, "Accept-Encoding: identity");
             }
@@ -418,7 +400,7 @@ proxy_curl(const struct vrt_ctx *ctx, struct proxy_request *req)
     if (headers)
         curl_easy_setopt(ch, CURLOPT_HTTPHEADER, headers);
 
-    PROXY_DEBUG(ctx, "(%x) curl url:%s", req->id, req->cfg.url);
+    PROXY_DEBUG(ctx, "(%x) curl url:%s", req->id, be->ipv4_addr);
     CURLcode ret = curl_easy_perform(ch);
 
     long status;
@@ -486,7 +468,7 @@ proxy_curl(const struct vrt_ctx *ctx, struct proxy_request *req)
 }
 
 void
-proxy_add_headers(const struct vrt_ctx *ctx, struct proxy_request *req)
+proxy_add_headers(VRT_CTX, struct proxy_request *req)
 {
     CHECK_OBJ_NOTNULL(req, PROXY_REQUEST_MAGIC);
     AN(req->busy);
@@ -640,7 +622,7 @@ process_json(struct proxy_request *req, unsigned short *idx,
 }
 
 static void
-set_header_id(const struct vrt_ctx *ctx, const struct proxy_request *req)
+set_header_id(VRT_CTX, const struct proxy_request *req)
 {
     CHECK_OBJ_NOTNULL(req, PROXY_REQUEST_MAGIC);
     CHECK_OBJ_NOTNULL(ctx, VRT_CTX_MAGIC);
@@ -652,11 +634,11 @@ set_header_id(const struct vrt_ctx *ctx, const struct proxy_request *req)
 }
 
 static unsigned
-get_header_id(const struct vrt_ctx *ctx)
+get_header_id(VRT_CTX)
 {
     CHECK_OBJ_NOTNULL(ctx, VRT_CTX_MAGIC);
 
-    char *ids = NULL;
+    const char *ids = NULL;
 
     size_t len = strlen(PROXY_HEADER);
     char hdr[len + 3]; /* 3 = size, colon, newline */
@@ -691,6 +673,50 @@ get_header_id(const struct vrt_ctx *ctx)
         return 0;
 
     return id;
+}
+
+static int
+is_header(const txt *hh, const char *hdr)
+{
+    unsigned l;
+
+  	Tcheck(*hh);
+  	AN(hdr);
+  	l = hdr[0];
+  	assert(l == strlen(hdr + 1));
+  	assert(hdr[l] == ':');
+  	hdr++;
+  	return (!strncasecmp(hdr, hh->b, l));
+}
+
+static const struct backend *
+get_backend(VRT_CTX, struct worker *wrk, const struct director *dir)
+{
+    const struct director *be = NULL;
+    const struct backend *bp = NULL;
+
+    CHECK_OBJ_ORNULL(dir, DIRECTOR_MAGIC);
+
+    if (dir == NULL)
+        dir = ctx->req->director_hint;
+
+    CHECK_OBJ_NOTNULL(dir, DIRECTOR_MAGIC);
+
+    if (dir->resolve) {
+        struct busyobj bo = {0};
+        bo.magic = BUSYOBJ_MAGIC;
+        be = dir->resolve(dir, wrk, &bo);
+        CHECK_OBJ_NOTNULL(be, DIRECTOR_MAGIC);
+    }
+    else
+        be = dir;
+
+    if (VALID_OBJ(be, DIRECTOR_MAGIC)) {
+        CAST_OBJ_NOTNULL(bp, be->priv, BACKEND_MAGIC);
+        return bp;
+    }
+
+    return NULL;
 }
 
 static void

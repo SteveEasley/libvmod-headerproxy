@@ -74,6 +74,7 @@ AM_COND_IF(DEBUG,
     AC_DEFINE(DEBUG, 0, [Define to 1 or higher if this is a debug build]))
 
 PKG_CHECK_MODULES([libvarnishapi], [varnishapi])
+PKG_CHECK_VAR([LIBVARNISHAPI_PREFIX], [varnishapi], [prefix])
 PKG_CHECK_VAR([LIBVARNISHAPI_DATAROOTDIR], [varnishapi], [datarootdir])
 PKG_CHECK_VAR([LIBVARNISHAPI_BINDIR], [varnishapi], [bindir])
 PKG_CHECK_VAR([LIBVARNISHAPI_SBINDIR], [varnishapi], [sbindir])
@@ -83,6 +84,9 @@ AC_SUBST([LIBVARNISHAPI_DATAROOTDIR])
 VARNISH_VMOD_INCLUDES
 VARNISH_VMOD_DIR
 VARNISH_VMODTOOL
+# inherit the prefix from Varnish.
+# acessing ac_ variable because AC_PREFIX_DEFAULT acts too early
+ac_default_prefix=$LIBVARNISHAPI_PREFIX
 
 AC_PATH_PROG([VARNISHTEST], [varnishtest], [],
     [$LIBVARNISHAPI_BINDIR:$LIBVARNISHAPI_SBINDIR:$PATH])

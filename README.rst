@@ -11,17 +11,13 @@ Varnish Header Proxy VMOD
 :Version: 0.1.0
 :Manual section: 3
 
-Note that this vmod is an alpha.
+Note that this vmod requires Varnish 4.1 or higher.
 
 SYNOPSIS
 ========
 ::
 
     import headerproxy;
-
-    sub vcl_init {
-        headerproxy.url("http://localhost:8080/headerproxy.php");
-    }
 
     sub vcl_recv {
         headerproxy.call();
@@ -188,10 +184,22 @@ in ``vcl_deliver``::
 VCL
 ===
 
-To use the vmod you add a ``headerproxy.url()`` call to ``vcl_init`` and/or
-``vcl_recv`` (see `url`_). The parameter given is the url of the web script
-that the vmod will proxy the request to. Note you are just setting the url,
-not initiating a request yet.
+The vmod determines the URL of your web script by querying for an available
+backend and combining it's hostname/IP with an optional path you provide.
+If neither the backend or path are configured in the vmod, then it will use
+the backend chosen for normal requests, and the a path of "/". This feature
+is very powerful in that it allows you to either use the same backends used
+for the web script as you use for servicing requests, OR you can setup a
+separate director and point the vmod to it.
+
+To specify a specific backend or director you add the
+``headerproxy.backend()`` call into ``vcl_recv`` (again this is optional). For
+example if you have a round_robin director called ``cluster``, your would
+point the vmod to it with ``headerproxy.backend(cluster.backend())``.
+
+To specify a path to be appended to the url you add the ``headerproxy.path()``
+call into ``vcl_recv``. For example, if might call
+``headerproxy.path("/varnish.php")``.
 
 You then add a ``headerproxy.call()`` call into ``vcl_recv`` (see `call`_). This
 will do the following:
@@ -241,94 +249,61 @@ vcl_backend_error
 FUNCTIONS
 =========
 
-url
----
-
-Prototype
-    ::
-
-        headerproxy.url(STRING)
-
-Context
-    vcl_init, vcl_recv
-
-Returns
-	VOID
-
-Description
-	Sets the http url to proxy requests to. If called in ``vcl_init`` the url
-	will be used for all requests. If called in ``vcl_recv`` it will be used for
-	only the current request. Calling it in ``vcl_recv`` allows you to call a
-	custom url based on the request.
-
-Example
-    ::
-
-        sub vcl_init {
-            headerproxy.url("http://localhost:8080/varnish.php");
-        }
-
-        sub vcl_recv {
-            if (req.http.X-Foo == "bar") {
-                headerproxy.url("http://localhost:8080/varnish-foo.php");
-            }
-        }
-
-connect_timeout
----------------
-
-Prototype
-    ::
-
-        headerproxy.connect_timeout(INT)
-
-Context
-    vcl_init, vcl_recv
-
-Returns
-	VOID
-
-Description
-	Sets the curl connect timeout. Resolution is in seconds. Default is no
-	timeout.
-
-Example
-    ::
-
-        sub vcl_init {
-            headerproxy.connect_timeout(30);
-        }
-
-        sub vcl_recv {
-            headerproxy.connect_timeout(1);
-        }
-
-timeout
+backend
 -------
 
 Prototype
     ::
 
-        headerproxy.timeout(INT)
+        headerproxy.url(BACKEND)
 
 Context
-    vcl_init, vcl_recv
+    vcl_recv
 
 Returns
 	VOID
 
 Description
-	Sets the curl timeout. Resolution is in seconds. Default is no timeout.
+	Sets the varnish backend or director to proxy requests to.
 
 Example
     ::
 
+        backend b1 { .host "10.1.1.1"; }
+
         sub vcl_init {
-            headerproxy.timeout(30);
+            new cluster = directors.round_robin();
+            cluster.add_backend(b1);
         }
 
         sub vcl_recv {
-            headerproxy.timeout(1);
+            headerproxy.backend(b1);
+            # OR
+            headerproxy.backend(cluster.backend());
+        }
+
+path
+----
+
+Prototype
+    ::
+
+        headerproxy.path(STRING)
+
+Context
+    vcl_recv
+
+Returns
+    VOID
+
+Description
+    Sets the url path of your web script.
+
+Example
+    ::
+
+        sub vcl_recv {
+            headerproxy.path("/webscript.php");
         }
 
 call

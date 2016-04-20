@@ -15,14 +15,15 @@ server s2 {
 varnish v1 -vcl+backend {
     import headerproxy from "${vmod_topbuild}/src/.libs/libvmod_headerproxy.so";
 
-    sub vcl_init {
-        headerproxy.timeout(1);
-        headerproxy.url("http://${s1_addr}:${s1_port}");
+    backend b1 {
+        .host = "${s1_addr}";
+        .port = "${s1_port}";
+        .first_byte_timeout = 1s;
     }
 
     sub vcl_recv {
-        set req.backend_hint = s1;
         set req.backend_hint = s2;
+        headerproxy.backend(b1);
 
         headerproxy.call();
         set req.http.x-error = headerproxy.error();

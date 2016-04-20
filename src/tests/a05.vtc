@@ -1,6 +1,10 @@
-varnishtest "Test vmod not configured"
+varnishtest "Test vmod when backend not explicitly set"
 
 server s1 {
+    rxreq
+    txresp
+
+    accept
     rxreq
     txresp
 } -start
