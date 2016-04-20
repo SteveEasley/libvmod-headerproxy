@@ -8,11 +8,9 @@ backend default {
     .port = "8000";
 }
 
-sub vcl_init {
-    headerproxy.url("http://localhost:8000/headerproxy.php");
-}
-
 sub vcl_recv {
+    headerproxy.path("/headerproxy.php");
+
     # We choose not to send ajax requests, or requests for assets to the header proxy
     if (false == (
             req.http.X-Requested-With == "XMLHttpRequest" ||

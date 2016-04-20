@@ -5,6 +5,6 @@ Naming scheme
 -------------
 
     a -> Basic tests
-    b -> Config tests
+    b -> Director tests
     c -> Error tests
     d -> Exit tests

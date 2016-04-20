@@ -21,6 +21,11 @@ server s1 {
 server s2 {
     rxreq
     txresp -hdr "server: 1"
+
+    accept
+    rxreq
+    delay 1
+    txresp -hdr "server: bgfetch"
 } -start
 
 server s3 {
@@ -31,12 +36,8 @@ server s3 {
 varnish v1 -vcl+backend {
     import headerproxy from "${vmod_topbuild}/src/.libs/libvmod_headerproxy.so";
 
-    sub vcl_init {
-        headerproxy.url("http://${s1_addr}:${s1_port}");
-    }
-
     sub vcl_recv {
-        set req.backend_hint = s1;
+        headerproxy.backend(s1);
         set req.backend_hint = s2;
 
         if (req.http.client == "3") {
@@ -101,6 +102,3 @@ client c1 {
     expect resp.http.server == "1"
     expect resp.http.x-deliv == "deliv3"
 } -run
-
-varnish v1 -expect backend_conn == 2
-#server s1 -wait

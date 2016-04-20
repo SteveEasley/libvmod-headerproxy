@@ -1,9 +1,7 @@
 $Module headerproxy 3 VMOD
 $Event init_function
-$Function VOID url(PRIV_VCL, STRING)
-$Function VOID host(PRIV_VCL, STRING)
-$Function VOID connect_timeout(PRIV_VCL, INT)
-$Function VOID timeout(PRIV_VCL, INT)
 $Function STRING error()
-$Function VOID call(PRIV_VCL)
+$Function VOID backend(BACKEND)
+$Function VOID path(STRING)
+$Function VOID call()
 $Function VOID process()

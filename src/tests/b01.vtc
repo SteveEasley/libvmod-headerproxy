@@ -1,114 +1,69 @@
-varnishtest "Test vcl_init config change"
+varnishtest "Test round_robin director"
 
-server s1 -repeat 2  {
+server s1 {
     rxreq
-    expect req.url == "/0"
     txresp -hdr "Content-Type: application/json" -body {
         {
             "vcl_recv": [
-                "x-recv: a"
-            ],
-        }
-    }
-
-    accept
-    rxreq
-    expect req.url == "/1"
-    txresp -hdr "Content-Type: application/json" -body {
-        {
-            "vcl_recv": [
-                "x-recv: b"
-            ],
+                "x-recv: s1"
+            ]
         }
     }
 } -start
 
 server s2 {
     rxreq
-    expect req.http.x-recv == "a"
+    txresp -hdr "Content-Type: application/json" -body {
+        {
+            "vcl_recv": [
+                "x-recv: s2"
+            ]
+        }
+    }
+} -start
+
+server s3 {
+    rxreq
+    expect req.http.x-recv == "s1"
     txresp
 
+    accept
     rxreq
-    expect req.http.x-recv == "b"
-    txresp
-
-    rxreq
-    expect req.http.x-recv == "a"
+    expect req.http.x-recv == "s2"
     txresp
 } -start
 
+
 varnish v1 -vcl+backend {
+    import ${vmod_directors};
     import headerproxy from "${vmod_topbuild}/src/.libs/libvmod_headerproxy.so";
 
     sub vcl_init {
-        headerproxy.url("http://${s1_addr}:${s1_port}/0");
+        new cluster = directors.round_robin();
+        cluster.add_backend(s1);
+        cluster.add_backend(s2);
     }
 
     sub vcl_recv {
-        set req.backend_hint = s1;
-        set req.backend_hint = s2;
+        headerproxy.backend(cluster.backend());
+        set req.backend_hint = s3;
 
         headerproxy.call();
-    }
-
-    sub vcl_backend_fetch {
-        headerproxy.process();
-    }
-
-    sub vcl_backend_response {
-        headerproxy.process();
+        set req.http.x-error = headerproxy.error();
     }
 
     sub vcl_deliver {
         headerproxy.process();
     }
+
 } -start
-
-varnish v1 -vcl+backend {
-    import headerproxy from "${vmod_topbuild}/src/.libs/libvmod_headerproxy.so";
-
-    sub vcl_init {
-        headerproxy.url("http://${s1_addr}:${s1_port}/1");
-    }
-
-    sub vcl_recv {
-        set req.backend_hint = s1;
-        set req.backend_hint = s2;
-
-        headerproxy.call();
-    }
-
-    sub vcl_backend_fetch {
-        headerproxy.process();
-    }
-
-    sub vcl_backend_response {
-        headerproxy.process();
-    }
-
-    sub vcl_deliver {
-        headerproxy.process();
-    }
-}
-
-varnish v1 -cli "vcl.use vcl1"
 
 client c1 {
-    txreq -url "/1"
+    txreq -url "/"
     rxresp
 } -run
 
-varnish v1 -cli "vcl.use vcl2"
-
-client c2 {
-    txreq -url "/2"
-    rxresp
-} -run
-
-varnish v1 -cli "vcl.use vcl1"
-varnish v1 -cli "vcl.discard vcl2"
-
-client c3 {
-    txreq -url "/3"
+client c1 {
+    txreq -url "/"
     rxresp
 } -run

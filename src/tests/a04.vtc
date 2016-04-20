@@ -1,4 +1,4 @@
-varnishtest "Test vmod when not used"
+varnishtest "Test vmod when not called"
 
 server s1 {
     rxreq

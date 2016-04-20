@@ -1,4 +1,4 @@
-varnishtest "Test random director"
+varnishtest "Test hash director"
 
 server s1 -repeat 2 {
     rxreq
@@ -24,12 +24,12 @@ server s2 -repeat 2 {
 
 server s3 {
     rxreq
-    expect req.http.x-recv ~ "s[12]"
+    expect req.http.x-recv ~ "s1"
     txresp
 
     accept
     rxreq
-    expect req.http.x-recv ~ "s[12]"
+    expect req.http.x-recv ~ "s2"
     txresp
 } -start
 
@@ -39,13 +39,13 @@ varnish v1 -vcl+backend {
     import headerproxy from "${vmod_topbuild}/src/.libs/libvmod_headerproxy.so";
 
     sub vcl_init {
-        new cluster = directors.random();
+        new cluster = directors.hash();
         cluster.add_backend(s1, 1);
         cluster.add_backend(s2, 1);
     }
 
     sub vcl_recv {
-        headerproxy.backend(cluster.backend());
+        headerproxy.backend(cluster.backend(req.url));
         set req.backend_hint = s3;
 
         headerproxy.call();
@@ -59,11 +59,11 @@ varnish v1 -vcl+backend {
 } -start
 
 client c1 {
-    txreq -url "/"
+    txreq -url "/1"
     rxresp
 } -run
 
 client c1 {
-    txreq -url "/"
+    txreq -url "/3"
     rxresp
 } -run

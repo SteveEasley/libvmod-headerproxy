@@ -9,6 +9,8 @@
 #include "vdef.h"
 #include "vsb.h"
 #include "cache/cache.h"
+#include "cache/cache_director.h"
+#include "cache/cache_backend.h"
 
 #include "jsmn.h"
 
@@ -21,15 +23,6 @@
 
 #define JSON_MAX_TOKENS         32
 
-struct proxy_config {
-    unsigned  magic;
-#define PROXY_CONFIG_MAGIC 0xDBC2C13C
-    char     *url;
-    char     *host;
-    long     *connect_timeout;
-    long     *timeout;
-};
-
 struct proxy_request {
     unsigned magic;
 #define PROXY_REQUEST_MAGIC 0xFBA1C37A
@@ -38,7 +31,8 @@ struct proxy_request {
     const struct vrt_ctx        *ctx;
     time_t                      ts;     /* Timestamp for GC */
     short                       busy;
-    struct proxy_config         cfg;
+    const struct director       *backend;
+    const char                  *path;
     unsigned                    methods;
     jsmntok_t                   json_toks[JSON_MAX_TOKENS];
     uint16_t                    json_toks_len;
@@ -103,25 +97,22 @@ struct proxy_request {
         return NULL; \
     } while (0)
 
-struct proxy_config *
+void
 proxy_init();
 
 struct proxy_request *
-proxy_get_request(const struct vrt_ctx *ctx, const struct proxy_config *cfg);
+proxy_get_request(VRT_CTX, int alloc);
 
 struct proxy_request *
-proxy_resume_request(const struct vrt_ctx *ctx);
+proxy_resume_request(VRT_CTX);
 
 void
-proxy_release_request(const struct vrt_ctx *ctx, struct proxy_request *req);
+proxy_release_request(VRT_CTX, struct proxy_request *req);
 
 void
-proxy_curl(const struct vrt_ctx *ctx, struct proxy_request *req);
+proxy_curl(VRT_CTX, struct proxy_request *req);
 
 void
-proxy_add_headers(const struct vrt_ctx *ctx, struct proxy_request *req);
-
-void
-proxy_free_config(void *p);
+proxy_add_headers(VRT_CTX, struct proxy_request *req);
 
 #endif
