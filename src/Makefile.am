@@ -12,7 +12,7 @@ libvmod_headerproxy_la_LDFLAGS = -module -export-dynamic -avoid-version -shared 
 
 libvmod_headerproxy_la_SOURCES = \
 	vcc_if.c vcc_if.h \
-	proxy.c proxy.hf \
+	proxy.c proxy.h \
 	jsmn.c jsmn.h \
 	vmod_headerproxy.c
 
