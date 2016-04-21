@@ -706,7 +706,7 @@ get_backend(VRT_CTX, struct worker *wrk, const struct director *dir)
         struct busyobj bo = {0};
         bo.magic = BUSYOBJ_MAGIC;
         be = dir->resolve(dir, wrk, &bo);
-        CHECK_OBJ_NOTNULL(be, DIRECTOR_MAGIC);
+        CHECK_OBJ_ORNULL(be, DIRECTOR_MAGIC);
     }
     else
         be = dir;
