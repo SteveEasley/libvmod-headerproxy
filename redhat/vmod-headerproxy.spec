@@ -20,7 +20,7 @@ Varnish Header Proxy VMOD
 
 %build
 %configure \
-#    --enable-debug
+    --enable-debug
 %{__make} %{?_smp_mflags}
 %{__make} %{?_smp_mflags} check
 

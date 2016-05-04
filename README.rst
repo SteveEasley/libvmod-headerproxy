@@ -42,6 +42,12 @@ to:
   VCL and into your web script. Examples include varying responses on geo
   location, AB testing, etc.
 
+You might be asking yourself, why would I add latency to my super fast cached
+responses by adding an additional HTTP call? That's a great question. The
+answer is yes, it does add latency, but the benefit is allowing you to cache
+requests where you might not have been able them at all before. It's up to you
+to decide if its worth in.
+
 Note that the web script you proxy requests to does not actually modify the
 client request or response directly. Instead your script outputs a json
 formatted list of headers it wants the vmod to add.
@@ -216,8 +222,15 @@ Description
 Example
     ::
 
+        # Proxy requests to the same backend servers Varnish sends regular
+        # requests to.
         sub vcl_recv {
             headerproxy.call(req.backend_hint, "/webscript");
+        }
+
+        # Or send requests to a dedicated director just for your proxy script.
+        sub vcl_recv {
+            headerproxy.call(proxy_cluster.backend(), "/webscript");
         }
 
 process
@@ -267,7 +280,7 @@ Example
     ::
 
         sub vcl_recv {
-            headerproxy.process();
+            headerproxy.call();
             set req.http.X-VMOD-Error = headerproxy.error();
         }
 
