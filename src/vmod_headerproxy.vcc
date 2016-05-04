@@ -1,7 +1,5 @@
 $Module headerproxy 3 VMOD
 $Event init_function
-$Function STRING error()
-$Function VOID backend(BACKEND)
-$Function VOID path(STRING)
-$Function VOID call()
-$Function VOID process()
+$Function VOID call(PRIV_TOP, BACKEND, STRING)
+$Function VOID process(PRIV_TOP)
+$Function STRING error(PRIV_TOP)

@@ -1,0 +1,53 @@
+varnishtest "Test ESI"
+
+server s1 {
+	rxreq
+	txresp -hdr "Content-Type: application/json" -body {
+	    {
+	        "vcl_recv": [
+	            "x-recv: 1"
+	        ],
+	        "vcl_deliver": [
+	            "x-deliv: 1"
+	        ]
+	    }
+	}
+
+	accept
+	rxreq
+	expect req.http.x-recv == "1"
+	txresp -body {
+		<html><esi:include src="/body" /></html>
+	}
+
+	accept
+	rxreq
+	expect req.http.x-recv == "1"
+	expect req.http.x-deliv == <undef>
+	txresp -body {
+		<span>esi</span>
+	}
+} -start
+
+varnish v1 -vcl+backend {
+	import headerproxy from "${vmod_topbuild}/src/.libs/libvmod_headerproxy.so";
+
+	sub vcl_recv {
+		headerproxy.call(req.backend_hint, "/");
+		return (hash);
+	}
+
+	sub vcl_backend_response {
+		set beresp.do_esi = true;
+	}
+
+	sub vcl_deliver {
+	    headerproxy.process();
+	}
+
+} -start
+
+client c1 {
+    txreq -url "/"
+    rxresp
+} -run

@@ -16,93 +16,71 @@ init_function(VRT_CTX, struct vmod_priv *priv, enum vcl_event_e e)
     return 0;
 }
 
-VCL_VOID
-vmod_backend(VRT_CTX, VCL_BACKEND backend)
+static struct proxy_request*
+get_request(VRT_CTX, struct vmod_priv *priv, int alloc)
 {
-    if (ctx->method == VCL_MET_RECV) {
-        struct proxy_request *req = proxy_get_request(ctx, 1);
+    struct proxy_request *req = (struct proxy_request *)priv->priv;
+    CHECK_OBJ_ORNULL(req, PROXY_REQUEST_MAGIC);
 
-        if (VALID_OBJ(req, PROXY_REQUEST_MAGIC))
-            req->backend = backend;
+    if (alloc) {
+        AZ(req);
+        req = proxy_create_request(ctx);
+        CHECK_OBJ_ORNULL(req, PROXY_REQUEST_MAGIC);
+        if (req) {
+            priv->priv = (void *)req;
+            priv->free = (void *)proxy_release_request;
+        }
     }
-    else
-        PROXY_ERROR_VOID(ctx,
-            "invalid call outside vcl_recv%s", "");
+
+    return req;
 }
 
 VCL_VOID
-vmod_path(const struct vrt_ctx *ctx, VCL_STRING path)
-{
-    if (ctx->method == VCL_MET_RECV) {
-        struct proxy_request *req = proxy_get_request(ctx, 1);
-
-        if (VALID_OBJ(req, PROXY_REQUEST_MAGIC))
-            req->path = path;
-    }
-    else
-        PROXY_ERROR_VOID(ctx,
-            "invalid call outside vcl_recv%s", "");
-}
-
-VCL_VOID
-vmod_call(VRT_CTX)
+vmod_call(VRT_CTX, struct vmod_priv *priv, VCL_BACKEND backend, VCL_STRING path)
 {
     if (ctx->method != VCL_MET_RECV)
         return;
 
-    struct proxy_request *req = proxy_get_request(ctx, 1);
+    int alloc = (ctx->req->esi_level == 0 && ctx->req->restarts == 0);
+    struct proxy_request *req = get_request(ctx, priv, alloc);
+    CHECK_OBJ_ORNULL(req, PROXY_REQUEST_MAGIC);
 
-    if (VALID_OBJ(req, PROXY_REQUEST_MAGIC)) {
-        proxy_curl(ctx, req);
-        proxy_add_headers(ctx, req);
-    }
+    // restarted requests need a clean slate for curl below
+    if (ctx->req->restarts != req->restarts)
+        proxy_restart_request(ctx, req);
+
+    // esi requests reuse the same proxy headers
+    // restarted requests regenerate the proxy headers
+    if (ctx->req->esi_level == 0)
+        proxy_curl(ctx, req, backend, path);
+
+    proxy_process_request(ctx, req);
 }
 
 VCL_VOID
-vmod_process(VRT_CTX)
+vmod_process(VRT_CTX, struct vmod_priv *priv)
 {
-    struct proxy_request *req;
+    if (ctx->method != VCL_MET_DELIVER)
+        return;
 
-    switch (ctx->method) {
-        case VCL_MET_BACKEND_FETCH:
-        case VCL_MET_BACKEND_RESPONSE:
-        case VCL_MET_DELIVER:
-            req = proxy_resume_request(ctx);
-            if (VALID_OBJ(req, PROXY_REQUEST_MAGIC)) {
-                proxy_add_headers(ctx, req);
+    struct proxy_request *req = get_request(ctx, priv, 0);
+    CHECK_OBJ_ORNULL(req, PROXY_REQUEST_MAGIC);
 
-                if (ctx->method == VCL_MET_DELIVER ||
-                    ctx->method == VCL_MET_BACKEND_RESPONSE)
-                    proxy_release_request(ctx, req);
-            }
-
-            break;
-
-        case VCL_MET_PIPE:
-        case VCL_MET_SYNTH:
-        case VCL_MET_BACKEND_ERROR:
-            req = proxy_resume_request(ctx);
-            if (VALID_OBJ(req, PROXY_REQUEST_MAGIC))
-                proxy_release_request(ctx, req);
-
-            break;
-
-        default:
-            break;
-    }
+    if (req)
+        proxy_process_request(ctx, req);
 }
 
 VCL_STRING
-vmod_error(VRT_CTX)
+vmod_error(VRT_CTX, struct vmod_priv *priv)
 {
     if (ctx->method != VCL_MET_RECV)
         return NULL;
 
-    struct proxy_request *req = proxy_get_request(ctx, 0);
+    struct proxy_request *req = get_request(ctx, priv, 0);
     CHECK_OBJ_ORNULL(req, PROXY_REQUEST_MAGIC);
 
-    if (req == NULL)
-        return NULL;
+    if (req)
+        return req->error;
 
-    return req->error;
+    return NULL;
 }

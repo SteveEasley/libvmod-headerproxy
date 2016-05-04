@@ -9,9 +9,8 @@ server s1 {
     expect req.http.X-Forwarded-Url == {/foo}
     expect req.http.X-Forwarded-Host == "foo.com"
     txresp -hdr "Content-Type: application/json" -body "{}"
-} -start
 
-server s2 {
+    accept
     rxreq
     expect req.method == "POST"
     expect req.http.Host == "foo.com"
@@ -20,19 +19,13 @@ server s2 {
     txresp
 } -start
 
+
 varnish v1 -vcl+backend {
     import headerproxy from "${vmod_topbuild}/src/.libs/libvmod_headerproxy.so";
 
     sub vcl_recv {
-        headerproxy.backend(s1);
-        set req.backend_hint = s2;
-
-        headerproxy.call();
+        headerproxy.call(req.backend_hint, "/");
         set req.http.x-error = headerproxy.error();
-    }
-
-    sub vcl_deliver {
-        headerproxy.process();
     }
 } -start
 

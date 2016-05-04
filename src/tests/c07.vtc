@@ -1,22 +1,20 @@
-varnishtest "Test path param"
+varnishtest "Test no backends available"
 
 server s1 {
     rxreq
-    expect req.url == "/test"
-    txresp -hdr "Content-Type: application/json" -body "{}"
-
-    accept
-    rxreq
     txresp
 } -start
-
 
 varnish v1 -vcl+backend {
     import ${vmod_directors};
     import headerproxy from "${vmod_topbuild}/src/.libs/libvmod_headerproxy.so";
 
+    sub vcl_init {
+        new cluster = directors.round_robin();
+    }
+
     sub vcl_recv {
-        headerproxy.call(req.backend_hint, "/test");
+        headerproxy.call(cluster.backend(), "/");
         set req.http.x-error = headerproxy.error();
     }
 

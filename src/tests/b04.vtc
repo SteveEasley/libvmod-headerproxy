@@ -45,10 +45,9 @@ varnish v1 -vcl+backend {
     }
 
     sub vcl_recv {
-        headerproxy.backend(cluster.backend(req.url));
         set req.backend_hint = s3;
 
-        headerproxy.call();
+        headerproxy.call(cluster.backend(req.url), "/");
         set req.http.x-error = headerproxy.error();
     }
 

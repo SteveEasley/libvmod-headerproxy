@@ -4,9 +4,8 @@ server s1 {
     rxreq
     delay 2
     txresp -hdr "Content-Type: application/json" -body {}
-} -start
 
-server s2 {
+    accept
     rxreq
     expect req.http.x-error ~ "Timeout"
     txresp
@@ -22,10 +21,9 @@ varnish v1 -vcl+backend {
     }
 
     sub vcl_recv {
-        set req.backend_hint = s2;
-        headerproxy.backend(b1);
+        set req.backend_hint = b1;
 
-        headerproxy.call();
+        headerproxy.call(req.backend_hint, "/");
         set req.http.x-error = headerproxy.error();
     }
 

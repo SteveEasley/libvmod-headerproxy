@@ -1,4 +1,4 @@
-varnishtest "Test error called before process"
+varnishtest "Test error called before call"
 
 server s1 {
     rxreq
@@ -25,11 +25,10 @@ varnish v1 -vcl+backend {
     import headerproxy from "${vmod_topbuild}/src/.libs/libvmod_headerproxy.so";
 
     sub vcl_recv {
-        headerproxy.backend(s1);
         set req.backend_hint = s2;
 
         set req.http.x-error = headerproxy.error();
-        headerproxy.call();
+        headerproxy.call(s1, "/");
 
         return (hash);
     }

@@ -6,10 +6,7 @@ server s1 {
         {
             "vcl_recv": [
                 "X-Geo: us",
-                "X-Device: pc"
-            ],
-            "vcl_backend_response": [
-                "Vary: X-Geo, X-Device"
+                "X-Device: pc",
             ],
             "vcl_deliver": [
                 "Set-Cookie: cn=us",
@@ -26,9 +23,6 @@ server s1 {
                 "X-Geo: us",
                 "X-Device: pc"
             ],
-            "vcl_backend_response": [
-                "Vary: X-Geo, X-Device"
-            ],
             "vcl_deliver": [
                 "Set-Cookie: cn=us",
                 "Set-Cookie: ua=pc"
@@ -44,9 +38,6 @@ server s1 {
                 "X-Geo: uk",
                 "X-Device: mobile"
             ],
-            "vcl_backend_response": [
-                "Vary: X-Geo, X-Device"
-            ],
             "vcl_deliver": [
                 "Set-Cookie: cn=uk",
                 "Set-Cookie: ua=mobile"
@@ -61,7 +52,7 @@ server s2 {
     expect req.http.X-Geo == "us"
     expect req.http.X-Device == "pc"
     expect req.http.x-error == ""
-    txresp -hdr "X-Theme: charm" -hdr "Vary: X-Theme"
+    txresp -hdr "Vary: X-Geo, X-Device"
 
     # client c2
     # cached so shouldn't make it to backend
@@ -71,7 +62,7 @@ server s2 {
     expect req.http.X-Geo == "uk"
     expect req.http.X-Device == "mobile"
     expect req.http.x-error == ""
-    txresp -hdr "X-Theme: charm" -hdr "Vary: X-Theme"
+    txresp -hdr "Vary: X-Geo, X-Device"
 } -start
 
 varnish v1 -vcl+backend {
@@ -79,16 +70,10 @@ varnish v1 -vcl+backend {
     import headerproxy from "${vmod_topbuild}/src/.libs/libvmod_headerproxy.so";
 
     sub vcl_recv {
-        headerproxy.backend(s1);
         set req.backend_hint = s2;
 
-        headerproxy.call();
+        headerproxy.call(s1, "/");
         set req.http.x-error = headerproxy.error();
-    }
-
-    sub vcl_backend_response {
-        headerproxy.process();
-        std.collect(beresp.http.Vary);
     }
 
     sub vcl_deliver {
@@ -98,22 +83,22 @@ varnish v1 -vcl+backend {
 } -start
 
 client c1 {
-    txreq -url "/" -hdr "cn: us" -hdr "ua: pc"
+    txreq -url "/"
     rxresp
-    expect resp.http.Vary == "X-Theme, X-Geo, X-Device"
+    expect resp.http.Vary == "X-Geo, X-Device"
     expect resp.http.Set-Cookie == "cn=us, ua=pc"
 } -run
 
 client c1 {
-    txreq -url "/" -hdr "cn: us" -hdr "ua: pc"
+    txreq -url "/"
     rxresp
-    expect resp.http.Vary == "X-Theme, X-Geo, X-Device"
+    expect resp.http.Vary == "X-Geo, X-Device"
     expect resp.http.Set-Cookie == "cn=us, ua=pc"
 } -run
 
 client c1 {
-    txreq -url "/" -hdr "cn: uk" -hdr "ua: mobile"
+    txreq -url "/"
     rxresp
-    expect resp.http.Vary == "X-Theme, X-Geo, X-Device"
+    expect resp.http.Vary == "X-Geo, X-Device"
     expect resp.http.Set-Cookie == "cn=uk, ua=mobile"
 } -run

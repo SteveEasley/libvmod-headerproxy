@@ -26,17 +26,12 @@
 struct proxy_request {
     unsigned magic;
 #define PROXY_REQUEST_MAGIC 0xFBA1C37A
-    unsigned                    id;
-    VTAILQ_ENTRY(proxy_request) list;
     const struct vrt_ctx        *ctx;
-    time_t                      ts;     /* Timestamp for GC */
-    short                       busy;
-    const struct director       *backend;
-    const char                  *path;
-    unsigned                    methods;
+    struct vsb                  *json;
     jsmntok_t                   json_toks[JSON_MAX_TOKENS];
     uint16_t                    json_toks_len;
-    struct vsb                  *body;
+    uint8_t                     collect_cookies;
+    uint16_t                    restarts;
     char                        *error;
 };
 
@@ -101,18 +96,19 @@ void
 proxy_init();
 
 struct proxy_request *
-proxy_get_request(VRT_CTX, int alloc);
-
-struct proxy_request *
-proxy_resume_request(VRT_CTX);
+proxy_create_request(VRT_CTX);
 
 void
-proxy_release_request(VRT_CTX, struct proxy_request *req);
+proxy_restart_request(VRT_CTX, struct proxy_request *req);
 
 void
-proxy_curl(VRT_CTX, struct proxy_request *req);
+proxy_release_request(void *ptr);
 
 void
-proxy_add_headers(VRT_CTX, struct proxy_request *req);
+proxy_curl(VRT_CTX, struct proxy_request *req, const struct director *dir,
+            const char *path);
+
+void
+proxy_process_request(VRT_CTX, struct proxy_request *req);
 
 #endif

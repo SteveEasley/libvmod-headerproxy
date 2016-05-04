@@ -7,23 +7,15 @@ server s1 {
             "vcl_recv": [
                 "x-recv: recv"
             ],
-            "vcl_backend_fetch": [
-                "x-befetch: befetch"
-            ],
-            "vcl_backend_response": [
-                "x-beresp: beresp"
-            ],
             "vcl_deliver": [
                 "x-deliv: deliv"
             ]
         }
     }
-} -start
 
-server s2 {
+    accept
     rxreq
     expect req.http.x-recv == "recv"
-    expect req.http.x-befetch == "befetch"
     expect req.http.x-error == ""
     txresp
 } -start
@@ -33,19 +25,8 @@ varnish v1 -vcl+backend {
     import headerproxy from "${vmod_topbuild}/src/.libs/libvmod_headerproxy.so";
 
     sub vcl_recv {
-        headerproxy.backend(s1);
-        set req.backend_hint = s2;
-
-        headerproxy.call();
+        headerproxy.call(req.backend_hint, "/");
         set req.http.x-error = headerproxy.error();
-    }
-
-    sub vcl_backend_fetch {
-        headerproxy.process();
-    }
-
-    sub vcl_backend_response {
-        headerproxy.process();
     }
 
     sub vcl_deliver {
@@ -57,5 +38,4 @@ client c1 {
     txreq -url "/"
     rxresp
     expect resp.http.x-deliv == "deliv"
-    expect resp.http.x-beresp == "beresp"
 } -run

@@ -1,4 +1,4 @@
-varnishtest "Test vmod when backend not explicitly set"
+varnishtest "Test vmod when no response"
 
 server s1 {
     rxreq
@@ -13,26 +13,10 @@ varnish v1 -vcl+backend {
     import headerproxy from "${vmod_topbuild}/src/.libs/libvmod_headerproxy.so";
 
     sub vcl_recv {
-        headerproxy.call();
-    }
-
-    sub vcl_backend_fetch {
-        headerproxy.process();
-    }
-
-    sub vcl_backend_response {
-        headerproxy.process();
+        headerproxy.call(req.backend_hint, "/");
     }
 
     sub vcl_deliver {
-        headerproxy.process();
-    }
-
-    sub vcl_synth {
-        headerproxy.process();
-    }
-
-    sub vcl_pipe {
         headerproxy.process();
     }
 } -start

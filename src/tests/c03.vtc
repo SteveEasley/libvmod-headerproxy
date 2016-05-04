@@ -2,7 +2,7 @@ varnishtest "Test invalid http response code"
 
 server s1 {
     rxreq
-    txresp -status 500 -hdr "Content-Type: application/json" -body {}
+    txresp -status 500 -hdr "Content-Type: application/json" -body {{}}
 } -start
 
 server s2 {
@@ -15,10 +15,9 @@ varnish v1 -vcl+backend {
     import headerproxy from "${vmod_topbuild}/src/.libs/libvmod_headerproxy.so";
 
     sub vcl_recv {
-        headerproxy.backend(s1);
         set req.backend_hint = s2;
 
-        headerproxy.call();
+        headerproxy.call(s1, "/");
         set req.http.x-error = headerproxy.error();
         return (hash);
     }

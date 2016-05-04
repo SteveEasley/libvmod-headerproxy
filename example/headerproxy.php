@@ -11,7 +11,6 @@
 
 $response = array(
     'vcl_recv' => array(),
-    'vcl_backend_response' => array(),
     'vcl_deliver' => array(),
 );
 
@@ -58,11 +57,9 @@ function setGeoLocation($response)
     # to the backend on cache misses, as well as used in the Vary header below.
     $response['vcl_recv'][] = "X-Geo: $geo";
 
-    # Tell varnish to add a Vary header to the backend response. This will cause
-    # varnish to create separate cached versions of the page based on the geo
-    # location. Notice in default.vcl we use std.collect("Vary") to combine
-    # the multiple Vary headers we add into one comma delimited Vary header.
-    $response['vcl_backend_response'][] = "Vary: X-Geo";
+    # Tell our backend to add a Vary header to the backend response. Notice
+    # dont use a real Vary header since its the backend response that adds it.
+    $response['vcl_recv'][] = "X-Vary: X-Geo";
 
     return $response;
 }
@@ -93,11 +90,9 @@ function setAbTest($response)
     # to the backend on cache misses, as well as used in the Vary header below.
     $response['vcl_recv'][] = "X-Ab: $ab";
 
-    # Tell varnish to add a Vary header to the backend response. This will cause
-    # varnish to create separate cached versions of the page based on the ab
-    # decision. Notice in default.vcl we use std.collect("Vary") to combine
-    # the multiple Vary headers we add into one comma delimited Vary header.
-    $response['vcl_backend_response'][] = "Vary: X-Ab";
+    # Tell our backend to add a Vary header to the backend response. Notice
+    # dont use a real Vary header since its the backend response that adds it.
+    $response['vcl_recv'][] = "Vary: X-Ab";
 
     return $response;
 }

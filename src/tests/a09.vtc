@@ -1,46 +1,36 @@
-varnishtest "Test vcl_pipe"
+varnishtest "Test cookies"
 
-# Test that piped requests go through vcl_pipe
+# Cookie handling is special in that they should be collected into one header
 
 server s1 {
     rxreq
     txresp -hdr "Content-Type: application/json" -body {
         {
             "vcl_recv": [
-                "x-recv: recv"
+                "Cookie: proxy=1"
             ]
         }
     }
-} -start
 
-server s2 {
+    accept
     rxreq
-    expect req.http.x-recv == "recv"
+    expect req.http.Cookie == "client1=1; client2=1; proxy=1"
     expect req.http.x-error == ""
     txresp
 } -start
 
+
 varnish v1 -vcl+backend {
+    import ${vmod_std};
     import headerproxy from "${vmod_topbuild}/src/.libs/libvmod_headerproxy.so";
 
     sub vcl_recv {
-        headerproxy.backend(s1);
-        set req.backend_hint = s2;
-
-        headerproxy.call();
+        headerproxy.call(req.backend_hint, "/");
         set req.http.x-error = headerproxy.error();
-
-        return (pipe);
     }
-
-    sub vcl_pipe {
-        headerproxy.process();
-        return (pipe);
-    }
-
 } -start
 
 client c1 {
-    txreq -url "/"
+    txreq -url "/" -hdr "Cookie: client1=1; client2=1"
     rxresp
 } -run
