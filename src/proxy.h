@@ -39,7 +39,6 @@ struct proxy_request {
 #define PROXY_DEBUG(ctx, m, ...) \
     do { \
         VSLb(ctx->vsl, SLT_Debug, PROXY_NAME ": " m, __VA_ARGS__); \
-        syslog(LOG_ERR, PROXY_NAME ": " m, __VA_ARGS__); \
     } while (0)
 #else
 #define PROXY_DEBUG(ctx, m, ...)
@@ -47,7 +46,7 @@ struct proxy_request {
 
 #define PROXY_LOG(ctx, m, ...) \
     do { \
-        VSLb(ctx->vsl, SLT_Debug, PROXY_NAME ": " m, __VA_ARGS__); \
+        VSLb(ctx->vsl, SLT_VCL_Log, PROXY_NAME ": " m, __VA_ARGS__); \
     } while (0)
 
 #define PROXY_WARN(ctx, m, ...) \
