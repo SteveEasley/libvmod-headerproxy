@@ -41,28 +41,17 @@ vmod_call(VRT_CTX, struct vmod_priv *priv, VCL_BACKEND backend, VCL_STRING path)
 
     int alloc = (ctx->req->esi_level == 0 && ctx->req->restarts == 0);
     struct proxy_request *req = get_request(ctx, priv, alloc);
+    CHECK_OBJ_ORNULL(req, PROXY_REQUEST_MAGIC);
 
-    if (!req) {
-        // TODO: A null req here seems to be happening when in an esi request
-        // and the top level request is hit-for-pass. Intermittently varnish
-        // appears to be running priv->free and deallocating the req. This
-        // possibly is not a bug, and just a misunderstanding on my part about
-        // request lifetime.
-        // Info from segfault backtrace:
-        //   step = R_STP_RECV, VCL::method = inside RECV,
-        //   VCL::return = abandon, VCL::methods = {RECV, PASS, HASH, DELIVER},
-        //   restarts = 0, esi_level = 1
-        VSLb(ctx->vsl, SLT_Debug, "_debug_null_req");
+    // No req is valid if top-level VCL chose not create one
+    if (!req && !alloc)
         return;
-    }
 
-    CHECK_OBJ_NOTNULL(req, PROXY_REQUEST_MAGIC);
-
-    // restarted requests need a clean slate for curl below
+    // Restarted requests need a clean slate for curl below
     if (ctx->req->restarts != req->restarts)
         proxy_restart_request(ctx, req);
 
-    // esi requests reuse the same proxy headers
+    // ESI requests reuse the same proxy headers
     // restarted requests regenerate the proxy headers
     if (ctx->req->esi_level == 0)
         proxy_curl(ctx, req, backend, path);

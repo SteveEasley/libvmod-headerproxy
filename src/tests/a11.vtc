@@ -1,0 +1,52 @@
+varnishtest "Test ESI on a non GET method"
+
+server s1 {
+    rxreq
+    txresp -hdr "Content-Type: application/json" -body {}
+} -start
+
+server s2 {
+    # top level request
+    rxreq
+    txresp -body {
+        <html><esi:include src="/body" /></html>
+    }
+
+    # esi request
+    accept
+    rxreq
+    txresp -body {
+        <span>esi</span>
+    }
+} -start
+
+varnish v1 -vcl+backend {
+    import headerproxy from "${vmod_topbuild}/src/.libs/libvmod_headerproxy.so";
+
+    sub vcl_recv {
+        set req.backend_hint = s2;
+
+        if (req.method != "GET") {
+            return (pass);
+        }
+
+        # When this is an esi request, the call() method should not cause
+        # issues due to the top level request being a pass.
+        headerproxy.call(s1, "/");
+
+        return (hash);
+    }
+
+    sub vcl_backend_response {
+        set beresp.do_esi = true;
+    }
+
+    sub vcl_deliver {
+        headerproxy.process();
+    }
+} -start
+
+client c1 {
+    txreq -req PUT -url "/"
+    rxresp
+} -run
