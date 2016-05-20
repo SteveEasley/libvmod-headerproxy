@@ -72,21 +72,21 @@ Returns
 	VOID
 
 Description
-	Tells the vmod to proxy the client request to your web script then inserts
-	the	requested ``request`` headers from your json response. Based on your vcl
-	logic you can opt to not proxy the request by simply not calling
-	``headerproxy.call``.
+	Tells the vmod to send a copy of the client request to your web script,
+    decodes its json response, then inserts	any	requested ``request`` headers
+    into the client request.
 
 Example
     ::
 
-        # Proxy requests to the same backend servers Varnish sends regular
-        # requests to.
+        # If your web script is hosted with your backend app, you can use the
+        # same backend/director your app uses like this:
         sub vcl_recv {
             headerproxy.call(req.backend_hint, "/webscript");
         }
 
-        # Or send requests to a dedicated director just for your proxy script.
+        # Or alternatively send requests to a dedicated director just for your
+        # proxy script. This assumes you have already created proxy_cluster .
         sub vcl_recv {
             headerproxy.call(proxy_cluster.backend(), "/webscript");
         }
@@ -106,7 +106,7 @@ Returns
 	VOID
 
 Description
-    Inserts the requested ``response`` headers.
+    Tells the vmod to inserts the requested ``response`` headers from your json.
 
 Example
     ::
@@ -172,7 +172,7 @@ DEBUGGING
 =========
 
 Configure vmod for debugging with ``configure --enable-debug``. Useful debugging
-data will be outputted to both the Varnish log and syslog.
+data will be outputted to both the Varnish log.
 
 LIMITATIONS
 ===========
