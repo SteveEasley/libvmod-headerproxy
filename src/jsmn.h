@@ -1,3 +1,7 @@
+/*
+ * Covered by license ../LICENSE_JSMN
+ */
+
 #ifndef __JSMN_H_
 #define __JSMN_H_
 

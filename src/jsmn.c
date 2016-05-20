@@ -1,3 +1,7 @@
+/*
+ * Covered by license ../LICENSE_JSMN
+ */
+
 #include <stdlib.h>
 
 #include "jsmn.h"
