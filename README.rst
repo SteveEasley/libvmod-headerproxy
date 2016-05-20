@@ -69,11 +69,11 @@ Context
     vcl_recv
 
 Returns
-	VOID
+    VOID
 
 Description
     Tells the vmod to send a copy of the client request to your web script,
-    decodes its json response, then inserts	any	requested ``request`` headers
+    decodes its json response, then inserts any requested ``request`` headers
     into the client request.
 
 Example
@@ -103,7 +103,7 @@ Context
     vcl_deliver
 
 Returns
-	VOID
+    VOID
 
 Description
     Tells the vmod to inserts the requested ``response`` headers from your json.
@@ -127,12 +127,12 @@ Context
     vcl_recv
 
 Returns
-	STRING
+    STRING
 
 Description
     Called after ``headerproxy.call()``, ``headerproxy.error()`` will return
-	any error that might have occurred (as a string). Errors include CURL errors
-	and JSON decoding errors. It will be empty if there were no errors.
+    any error that might have occurred (as a string). Errors include CURL errors
+    and JSON decoding errors. It will be empty if there were no errors.
 
 Example
     ::
