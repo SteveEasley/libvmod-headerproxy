@@ -50,7 +50,7 @@ What can you do with this imbued power?
   your developers can contribute more easily.
 * Remove the need for numerous 3rd party vmods.
 
-Check out the `Wiki <wiki/>`_ for additional details.
+Check out the `Wiki <https://github.com/SteveEasley/libvmod-headerproxy/wiki>`_ for additional details.
 
 Check out the `canonical example <example/>`_ for inspiration.
 
