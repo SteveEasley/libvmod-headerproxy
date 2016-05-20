@@ -7,7 +7,7 @@ Varnish Header Proxy VMOD
 -------------------------
 
 :Author: Steve Easley
-:Date: 2015-07-22
+:Date: 2016-05-20
 :Version: 0.1.0
 :Manual section: 3
 
