@@ -11,7 +11,7 @@ Varnish Header Proxy VMOD
 :Version: 0.1.0
 :Manual section: 3
 
-This vmod requires Varnish 4.1 or higher.
+This vmod requires Varnish 4.1 or higher. While this vmod is in a development status just to let the dust settle, it is being used successfully in very high traffic website.
 
 SYNOPSIS
 ========
