@@ -4,10 +4,10 @@ varnishtest "Test proxy headers"
 server s1 {
     rxreq
     expect req.method == "GET"
+    expect req.http.Host == "foo.com"
     expect req.http.Via == {HTTP/1.1 VMOD-HeaderProxy}
     expect req.http.X-Forwarded-Method == "POST"
     expect req.http.X-Forwarded-Url == {/foo}
-    expect req.http.X-Forwarded-Host == "foo.com"
     txresp -hdr "Content-Type: application/json" -body "{}"
 
     accept

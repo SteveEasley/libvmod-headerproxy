@@ -319,11 +319,6 @@ proxy_curl(VRT_CTX, struct proxy_request *req, const struct director *dir,
     struct curl_slist *headers = NULL;
     char *wshdr = NULL;
 
-    if (be->hosthdr) {
-        wshdr = WS_Printf(ctx->ws, "Host: %s", be->hosthdr);
-        headers = curl_slist_append(headers, wshdr);
-    }
-
     for (int u = 0; u < ctx->http_req->nhd; u++) {
         const txt hdr = ctx->http_req->hd[u];
 
@@ -340,11 +335,7 @@ proxy_curl(VRT_CTX, struct proxy_request *req, const struct director *dir,
             headers = curl_slist_append(headers, wshdr);
         }
         else if (u >= HTTP_HDR_FIRST) {
-            if (is_header(&hdr, H_Host)) {
-                wshdr = WS_Printf(ctx->ws, "X-Forwarded-Host: %s", (hdr.b + H_Host[0] + 1));
-                headers = curl_slist_append(headers, wshdr);
-            }
-            else if (is_header(&hdr, H_Via) || is_header(&hdr, H_Content_Length)) {
+            if (is_header(&hdr, H_Via) || is_header(&hdr, H_Content_Length)) {
                 continue;
             }
             else if (is_header(&hdr, H_Accept_Encoding)) {
